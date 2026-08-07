@@ -61,6 +61,34 @@ npm run build
 cd src-tauri && cargo test
 ```
 
+## Релизы
+
+Сборкой занимается GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml)).
+Пуш тега вида `v*` собирает четыре артефакта и складывает их в **черновик**
+релиза — остаётся зайти в Releases и нажать «Publish»:
+
+| Платформа       | Артефакт                        |
+| --------------- | ------------------------------- |
+| Windows x64     | `..._x64-setup.exe` (NSIS)      |
+| Windows ARM64   | `..._arm64-setup.exe` (NSIS)    |
+| macOS (Apple M) | `..._aarch64.dmg`               |
+| Linux x64       | `..._amd64.AppImage`            |
+
+Секреты не нужны — хватает штатного `GITHUB_TOKEN`.
+
+Порядок выпуска: поднять версию **в трёх местах** —
+[src-tauri/tauri.conf.json](src-tauri/tauri.conf.json),
+[src-tauri/Cargo.toml](src-tauri/Cargo.toml) и [package.json](package.json)
+(иначе в именах файлов останется старая версия), затем:
+
+```bash
+git commit -am "chore: release v0.2.0" && git tag v0.2.0 && git push --follow-tags
+```
+
+Сборки не подписаны: macOS покажет предупреждение Gatekeeper (первый запуск —
+через правый клик → «Открыть»), Windows — SmartScreen. Лечится только платными
+сертификатами; настраивается в том же workflow через переменные окружения Tauri.
+
 ## Структура
 
 ```
