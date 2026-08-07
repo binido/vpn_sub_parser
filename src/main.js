@@ -1,4 +1,5 @@
 import { SubscriptionInput } from './components/SubscriptionInput.js';
+import { UpdateBanner } from './components/UpdateBanner.js';
 import { ServerList } from './components/ServerList.js';
 import { attachRipple } from './components/ripple.js';
 import { invoke, copyText } from './tauri.js';
@@ -74,6 +75,13 @@ const input = SubscriptionInput({
     }
   },
 });
+
+// Молча: нет сети или GitHub не ответил — просто не показываем плашку.
+invoke('check_update')
+  .then((update) => {
+    if (update) document.getElementById('update-slot').append(UpdateBanner(update));
+  })
+  .catch(() => {});
 
 // Последний URL подставляется, но запрос не выполняется автоматически.
 input.value = localStorage.getItem(LAST_URL_KEY) ?? '';

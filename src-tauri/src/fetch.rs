@@ -52,6 +52,34 @@ pub fn decode_body(body: &str) -> String {
     }
 }
 
+/// Последний опубликованный релиз проекта. None — если релизов ещё нет
+/// (черновики GitHub в `/releases/latest` не отдаёт).
+pub async fn latest_release(api_url: &str) -> Result<Option<serde_json::Value>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("vpn-sub-parser/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client
+        .get(api_url)
+        .send()
+        .await
+        .map_err(|_| "Не удалось связаться с GitHub".to_string())?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !response.status().is_success() {
+        return Err(format!("GitHub вернул статус {}", response.status().as_u16()));
+    }
+    response
+        .json()
+        .await
+        .map(Some)
+        .map_err(|_| "Не удалось разобрать ответ GitHub".to_string())
+}
+
 pub async fn fetch_subscription(url: &str) -> Result<String, String> {
     let url = url.trim();
     let parsed = url::Url::parse(url).map_err(|_| "Некорректная ссылка подписки".to_string())?;

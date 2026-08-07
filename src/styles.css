@@ -269,6 +269,20 @@ body {
   color: var(--on-error-container);
 }
 
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px 14px 24px;
+  border-radius: 20px;
+  background: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+  font-weight: 500;
+  animation: fade-slide 0.3s ease both;
+}
+
 /* ── Server list ─────────────────────────────────────────── */
 .server-list {
   display: flex;

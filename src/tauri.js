@@ -7,6 +7,11 @@ const notInTauri = () =>
 
 export const invoke = api.core?.invoke ?? notInTauri;
 
+export async function openUrl(url) {
+  if (api.opener) return api.opener.openUrl(url);
+  window.open(url, '_blank');
+}
+
 export async function copyText(text) {
   if (api.clipboardManager) return api.clipboardManager.writeText(text);
   return navigator.clipboard.writeText(text);
