@@ -23,3 +23,7 @@ serde_json = "1"
 base64 = "0.22"
 url = "2"
 percent-encoding = "2"
+# ponytail: zune-jpeg (транзитивно через image → tauri) без фичи "log" разворачивает
+# warn! в пустоту, что rustc 1.96+ считает ошибкой. Включаем фичу — убрать, когда
+# выйдет исправленный zune-jpeg.
+zune-jpeg = { version = "0.5", features = ["log"] }

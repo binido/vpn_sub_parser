@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VPN Sub Parser</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="top-bar">
+      <h1 class="top-bar__title">VPN Sub Parser</h1>
+      <button
+        id="theme-toggle"
+        class="icon-button"
+        type="button"
+        title="Светлая / тёмная тема"
+        aria-label="Переключить тему"
+      >
+        <span id="theme-icon">☾</span>
+      </button>
+    </header>
+
+    <main class="page">
+      <div id="input-slot"></div>
+      <div id="results-slot"></div>
+    </main>
+
+    <div id="fab-slot"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
