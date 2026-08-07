@@ -72,9 +72,15 @@ cd src-tauri && cargo test
 | Windows x64     | `..._x64-setup.exe` (NSIS)      |
 | Windows ARM64   | `..._arm64-setup.exe` (NSIS)    |
 | macOS (Apple M) | `..._aarch64.dmg`               |
-| Linux x64       | `..._amd64.AppImage`            |
+| Linux x64       | `..._amd64.AppImage` и `..._amd64.deb` |
 
 Секреты не нужны — хватает штатного `GITHUB_TOKEN`.
+
+AppImage весит под 80 МБ против 3 МБ у остальных не просто так: внутрь него
+целиком уезжает движок WebKitGTK (`libwebkit2gtk` 86 МБ, `libjavascriptcoregtk`
+32 МБ, `libicudata` 28 МБ в распакованном виде). На Windows и macOS вебвью даёт
+система, поэтому там инсталляторы крошечные. Кому важен размер — рядом лежит
+`.deb` на несколько мегабайт, он берёт `webkit2gtk-4.1` из системы.
 
 Порядок выпуска: поднять версию **в трёх местах** —
 [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json),

@@ -1,6 +1,6 @@
 [package]
 name = "vpn-sub-parser"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.77.2"
 
@@ -27,3 +27,11 @@ percent-encoding = "2"
 # warn! в пустоту, что rustc 1.96+ считает ошибкой. Включаем фичу — убрать, когда
 # выйдет исправленный zune-jpeg.
 zune-jpeg = { version = "0.5", features = ["log"] }
+
+# Бинарник в релизе едет с отладочными символами и весит втрое больше нужного.
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "s"
+panic = "abort"
