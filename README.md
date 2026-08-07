@@ -93,9 +93,17 @@ AppImage весит под 80 МБ против 3 МБ у остальных н�
 git commit -am "chore: release v0.2.0" && git tag v0.2.0 && git push --follow-tags
 ```
 
-Сборки не подписаны: macOS покажет предупреждение Gatekeeper (первый запуск —
-через правый клик → «Открыть»), Windows — SmartScreen. Лечится только платными
-сертификатами; настраивается в том же workflow через переменные окружения Tauri.
+Сборки подписаны ad-hoc (`bundle.macOS.signingIdentity: "-"`), но не заверены
+у Apple и Microsoft. Что это значит на практике:
+
+- **macOS** — первый запуск через правый клик по приложению → «Открыть».
+  Если система всё же ругается, снять карантин руками:
+  `xattr -cr "/Applications/VPN Sub Parser.app"`.
+- **Windows** — SmartScreen покажет «Подробнее» → «Выполнить в любом случае».
+
+Полностью убрать предупреждения можно только платными сертификатами
+(Apple Developer ID + нотаризация, code signing certificate для Windows) —
+они подключаются к тому же workflow через переменные окружения Tauri.
 
 ## Структура
 
