@@ -1,7 +1,147 @@
-//! Конвертация серверов в outbound-объекты Xray-core.
+//! Конвертация серверов в outbound-объекты Xray-core и обратно.
 
-use crate::parser::Server;
+use crate::parser::{to_link, Details, Server};
 use serde_json::{json, Map, Value};
+
+const PROXY_PROTOCOLS: [&str; 4] = ["vless", "vmess", "trojan", "shadowsocks"];
+
+fn str_field(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .filter(|s| !s.is_empty())
+}
+
+fn stream_to_details(stream: Option<&Value>, details: &mut Details) {
+    let Some(stream) = stream else { return };
+    details.network = Some(str_field(stream, "network").unwrap_or_else(|| "tcp".into()));
+    details.security = Some(str_field(stream, "security").unwrap_or_else(|| "none".into()));
+
+    for key in ["tlsSettings", "realitySettings"] {
+        if let Some(tls) = stream.get(key) {
+            details.sni = str_field(tls, "serverName");
+            details.fingerprint = str_field(tls, "fingerprint");
+            details.public_key = str_field(tls, "publicKey");
+            details.short_id = str_field(tls, "shortId");
+            details.alpn = tls.get("alpn").and_then(Value::as_array).map(|list| {
+                list.iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            });
+        }
+    }
+
+    if let Some(ws) = stream.get("wsSettings") {
+        details.path = str_field(ws, "path");
+        details.host = ws
+            .get("headers")
+            .and_then(|h| str_field(h, "Host").or_else(|| str_field(h, "host")));
+    }
+    if let Some(grpc) = stream.get("grpcSettings") {
+        details.service_name = str_field(grpc, "serviceName");
+    }
+    if let Some(http) = stream.get("httpSettings") {
+        details.path = str_field(http, "path");
+        details.host = http
+            .get("host")
+            .and_then(Value::as_array)
+            .and_then(|h| h.first())
+            .and_then(Value::as_str)
+            .map(str::to_string);
+    }
+}
+
+fn outbound_to_server(outbound: &Value, name: &str) -> Option<Server> {
+    let protocol = outbound.get("protocol")?.as_str()?;
+    if !PROXY_PROTOCOLS.contains(&protocol) {
+        return None;
+    }
+    let settings = outbound.get("settings")?;
+    let mut details = Details::default();
+
+    let node = settings
+        .get("vnext")
+        .or_else(|| settings.get("servers"))?
+        .get(0)?;
+    let address = str_field(node, "address")?;
+    let port = node.get("port")?.as_u64()? as u16;
+
+    match protocol {
+        "vless" | "vmess" => {
+            let user = node.get("users")?.get(0)?;
+            details.id = str_field(user, "id");
+            details.flow = str_field(user, "flow");
+            details.alter_id = user.get("alterId").and_then(Value::as_u64).map(|v| v as u32);
+            details.encryption = str_field(user, "encryption").or_else(|| str_field(user, "security"));
+        }
+        _ => {
+            details.id = str_field(node, "password");
+            details.method = str_field(node, "method");
+        }
+    }
+    stream_to_details(outbound.get("streamSettings"), &mut details);
+
+    let mut server = Server {
+        protocol: protocol.to_string(),
+        name: if name.is_empty() {
+            address.clone()
+        } else {
+            name.to_string()
+        },
+        address,
+        port,
+        raw: String::new(),
+        details,
+    };
+    server.raw = to_link(&server);
+    Some(server)
+}
+
+/// Панели вроде Marzban/Remnawave отдают клиентам не список ссылок, а массив
+/// готовых конфигов Xray. Возвращает None, если это не такой JSON.
+pub fn parse_xray_json(text: &str) -> Option<Vec<Server>> {
+    let value: Value = serde_json::from_str(text.trim()).ok()?;
+    let configs: Vec<&Value> = match &value {
+        Value::Array(items) => items.iter().collect(),
+        Value::Object(_) => vec![&value],
+        _ => return None,
+    };
+
+    let mut servers = Vec::new();
+    for config in configs {
+        let outbounds: Vec<&Value> = match config.get("outbounds").and_then(Value::as_array) {
+            Some(list) => list.iter().collect(),
+            // массив может состоять и из самих outbound-объектов
+            None => vec![config],
+        };
+        let proxies: Vec<&Value> = outbounds
+            .into_iter()
+            .filter(|o| {
+                o.get("protocol")
+                    .and_then(Value::as_str)
+                    .is_some_and(|p| PROXY_PROTOCOLS.contains(&p))
+            })
+            .collect();
+
+        match str_field(config, "remarks") {
+            // ponytail: профиль с именем = одна карточка. Профиль-балансировщик
+            // из десятков outbound'ов схлопывается в первый — так же, как его
+            // показывают клиенты.
+            Some(remarks) => {
+                if let Some(server) = proxies.first().and_then(|o| outbound_to_server(o, &remarks)) {
+                    servers.push(server);
+                }
+            }
+            None => servers.extend(proxies.into_iter().filter_map(|o| {
+                outbound_to_server(o, o.get("tag").and_then(Value::as_str).unwrap_or(""))
+            })),
+        }
+    }
+
+    (!servers.is_empty()).then_some(servers)
+}
 
 fn insert_some(map: &mut Map<String, Value>, key: &str, value: Option<&String>) {
     if let Some(v) = value {
@@ -151,5 +291,32 @@ mod tests {
         assert_eq!(o["settings"]["servers"][0]["password"], "pw");
         assert_eq!(o["streamSettings"]["wsSettings"]["headers"]["Host"], "h.com");
         assert!(to_outbounds_json(&[s, ws]).starts_with('['));
+    }
+
+    #[test]
+    fn parses_subscription_of_xray_configs() {
+        let text = r#"[{"remarks":"🇳🇱 Нидерланды","outbounds":[
+            {"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"nl.example.com","port":443,
+              "users":[{"id":"uuid-1","encryption":"none","flow":"xtls-rprx-vision"}]}]},
+             "streamSettings":{"network":"tcp","security":"reality",
+              "realitySettings":{"serverName":"nl.example.com","publicKey":"PBK","shortId":"ab12","fingerprint":"firefox"}}},
+            {"tag":"direct","protocol":"freedom"}]}]"#;
+
+        let servers = parse_xray_json(text).unwrap();
+        assert_eq!(servers.len(), 1);
+        let s = &servers[0];
+        assert_eq!((s.name.as_str(), s.address.as_str(), s.port), ("🇳🇱 Нидерланды", "nl.example.com", 443));
+        assert_eq!(s.details.public_key.as_deref(), Some("PBK"));
+
+        // собранная ссылка должна разбираться обратно в тот же сервер
+        let back = crate::parser::parse_link(&s.raw).unwrap();
+        assert_eq!(back.name, s.name);
+        assert_eq!(back.address, s.address);
+        assert_eq!(back.details.short_id, s.details.short_id);
+        assert_eq!(back.details.flow, s.details.flow);
+        assert_eq!(to_outbound(&back)["streamSettings"], to_outbound(s)["streamSettings"]);
+
+        assert!(parse_xray_json("не json").is_none());
+        assert!(parse_xray_json(r#"{"outbounds":[{"protocol":"freedom"}]}"#).is_none());
     }
 }

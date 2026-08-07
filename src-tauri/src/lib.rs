@@ -11,7 +11,8 @@ async fn parse_subscription(url: String) -> Result<Vec<Server>, String> {
         return Err("Введите ссылку подписки".into());
     }
     let text = fetch::fetch_subscription(&url).await?;
-    let servers = parser::parse_subscription(&text);
+    // Подписка бывает списком ссылок, а бывает массивом конфигов Xray.
+    let servers = xray::parse_xray_json(&text).unwrap_or_else(|| parser::parse_subscription(&text));
     if servers.is_empty() {
         return Err("В ответе подписки не найдено ни одного ключа".into());
     }

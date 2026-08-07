@@ -1,9 +1,18 @@
 //! Парсеры ссылок vless / vmess / trojan / ss.
 
 use crate::fetch::decode_base64;
+use base64::{engine::general_purpose::STANDARD, Engine};
+use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use url::Url;
+
+/// Символы, которые не нужно экранировать в собранных ссылках.
+const KEEP: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
@@ -251,6 +260,72 @@ pub fn parse_shadowsocks(link: &str) -> Result<Server, String> {
             ..Default::default()
         },
     })
+}
+
+/// Обратная операция: сервер → ссылка. Нужна, когда подписка пришла в виде
+/// готовых конфигов Xray, а показать и скопировать надо обычную ссылку.
+pub fn to_link(server: &Server) -> String {
+    let d = &server.details;
+    let name = utf8_percent_encode(&server.name, KEEP).to_string();
+    let id = d.id.clone().unwrap_or_default();
+
+    match server.protocol.as_str() {
+        "vmess" => {
+            let config = serde_json::json!({
+                "v": "2",
+                "ps": server.name,
+                "add": server.address,
+                "port": server.port.to_string(),
+                "id": id,
+                "aid": d.alter_id.unwrap_or(0).to_string(),
+                "scy": d.encryption.clone().unwrap_or_else(|| "auto".into()),
+                "net": d.network.clone().unwrap_or_else(|| "tcp".into()),
+                "type": "none",
+                "host": d.host.clone().unwrap_or_default(),
+                "path": d.path.clone().unwrap_or_default(),
+                "tls": d.security.clone().unwrap_or_default(),
+                "sni": d.sni.clone().unwrap_or_default(),
+            });
+            format!("vmess://{}", STANDARD.encode(config.to_string()))
+        }
+        "shadowsocks" => {
+            let method = d.method.clone().unwrap_or_else(|| "aes-256-gcm".into());
+            let userinfo = STANDARD.encode(format!("{method}:{id}"));
+            format!(
+                "ss://{userinfo}@{}:{}#{name}",
+                server.address, server.port
+            )
+        }
+        protocol => {
+            let mut query: Vec<String> = Vec::new();
+            let mut push = |key: &str, value: Option<&String>| {
+                if let Some(v) = value.filter(|v| !v.is_empty()) {
+                    query.push(format!("{key}={}", utf8_percent_encode(v, KEEP)));
+                }
+            };
+            if protocol == "vless" {
+                push("encryption", d.encryption.as_ref());
+                push("flow", d.flow.as_ref());
+            }
+            push("security", d.security.as_ref());
+            push("sni", d.sni.as_ref());
+            push("fp", d.fingerprint.as_ref());
+            push("pbk", d.public_key.as_ref());
+            push("sid", d.short_id.as_ref());
+            push("alpn", d.alpn.as_ref());
+            push("type", d.network.as_ref());
+            push("path", d.path.as_ref());
+            push("host", d.host.as_ref());
+            push("serviceName", d.service_name.as_ref());
+            format!(
+                "{protocol}://{}@{}:{}?{}#{name}",
+                utf8_percent_encode(&id, KEEP),
+                server.address,
+                server.port,
+                query.join("&")
+            )
+        }
+    }
 }
 
 pub fn parse_link(line: &str) -> Result<Server, String> {
