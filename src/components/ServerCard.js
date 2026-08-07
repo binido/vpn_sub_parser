@@ -50,6 +50,14 @@ export function ServerCard(server, index, { onToast }) {
     chipBox.append(chip);
   }
 
+  if (server.ping !== undefined) {
+    const chip = document.createElement('span');
+    const ms = server.ping;
+    chip.className = `chip chip--${ms === null ? 'dead' : ms < 150 ? 'fast' : ms < 400 ? 'mid' : 'slow'}`;
+    chip.textContent = ms === null ? 'нет ответа' : `${ms} мс`;
+    chipBox.prepend(chip);
+  }
+
   const head = el.querySelector('.server-card__head');
   attachRipple(head);
   head.addEventListener('click', () => {

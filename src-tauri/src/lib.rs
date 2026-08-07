@@ -1,5 +1,6 @@
 mod fetch;
 mod parser;
+mod ping;
 mod xray;
 
 use parser::Server;
@@ -23,6 +24,17 @@ async fn parse_subscription(url: String) -> Result<Vec<Server>, String> {
 #[tauri::command]
 fn export_xray_outbounds(servers: Vec<Server>) -> String {
     xray::to_outbounds_json(&servers)
+}
+
+/// Задержки до серверов в том же порядке, что и присланный список.
+/// null вместо числа — сервер не ответил.
+#[tauri::command]
+async fn ping_servers(servers: Vec<Server>) -> Vec<Option<u32>> {
+    let targets = servers
+        .iter()
+        .map(|s| (s.address.clone(), s.port))
+        .collect();
+    ping::ping_all(targets).await
 }
 
 #[derive(serde::Serialize)]
@@ -83,6 +95,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             parse_subscription,
             export_xray_outbounds,
+            ping_servers,
             check_update
         ])
         .run(tauri::generate_context!())
